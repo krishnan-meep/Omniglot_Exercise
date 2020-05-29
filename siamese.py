@@ -11,19 +11,27 @@ class SiameseNet(nn.Module):
         self.C2 = nn.Conv2d(64, 128, 4, 2, 1)
         self.C3 = nn.Conv2d(128, 256, 4, 2, 1)
         self.C4 = nn.Conv2d(256, 256, 4, 2, 1)
-        self.D1 = nn.Linear(self.h*self.w*256, 1)
+        self.C5 = nn.Conv2d(256, 256, 3, 1, 1)
+        self.D1 = nn.Linear(self.h*self.w*256, 256)
+        self.D2 = nn.Linear(256, 1)
+        
+        self.B1 = nn.BatchNorm2d(64)
+        self.B2 = nn.BatchNorm2d(128)
+        self.B3 = nn.BatchNorm2d(256)
+        self.B4 = nn.BatchNorm2d(256)
         
         modules = list(self.modules())
         for m in self.modules():
             if isinstance(m, (nn.Conv2d)):
-                nn.init.kaiming_normal_(m.weight)
+                nn.init.orthogonal_(m.weight)
         
-        self.Convs = nn.ModuleList([self.C1, self.C2, self.C3, self.C4])
+        self.Convs = nn.ModuleList([self.C1, self.C2, self.C3, self.C4, self.C5])
+        self.BNs = nn.ModuleList([self.B1, self.B2, self.B3, self.B4])
         self.Pool = nn.MaxPool2d(3, stride = 2)
         
     def encode(self, x):
-        for i in self.Convs:
-            x = F.leaky_relu(i(x))
+        for C, B in zip(self.Convs, self.BNs):
+            x = F.leaky_relu(B(C(x)))
             #x = self.Pool(x)
         x = x.view(x.size(0), -1)
         return x
@@ -32,7 +40,8 @@ class SiameseNet(nn.Module):
         x = self.encode(x)
         y = self.encode(y)
         d = torch.abs(x - y)
-        d = self.D1(d)
+        d = F.leaky_relu(self.D1(d))
+        d = self.D2(d)
         return d
     
 def train_step(netS, optimizer, loss_fn, x, y, sim):
